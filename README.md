@@ -1,7 +1,3 @@
-Got it — we can make the **style link mandatory** and update the README accordingly. Here’s the revised Markdown README with `--style-url` required:
-
----
-
 # STAC-like GeoParquet Generator
 
 This Python script helps you generate **STAC-like items** in a **GeoParquet** file from a list of geospatial files (`.fgb`, `.geojson`, `.tif`/`.cog`).
