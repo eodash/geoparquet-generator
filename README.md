@@ -1,7 +1,3 @@
-Got it — we can make the **style link mandatory** and update the README accordingly. Here’s the revised Markdown README with `--style-url` required:
-
----
-
 # STAC-like GeoParquet Generator
 
 This Python script helps you generate **STAC-like items** in a **GeoParquet** file from a list of geospatial files (`.fgb`, `.geojson`, `.tif`/`.cog`).
@@ -61,7 +57,7 @@ python generate_geoparquet.py \
   -o items.parquet
 ```
 
-> **Note:** `--style-url` is mandatory. The script will not run without it.
+> **Note:** `--style-url` needs to be provided in order for eodash to visulize the data
 
 ### Generate GeoParquet from CSV
 
@@ -138,8 +134,5 @@ If no date is found, it falls back to **current UTC time**.
 
 * Each input file becomes a STAC item with `asset_0`. Multiple files per day can be merged manually or via workflow.
 * Asset keys are reindexed to avoid `null` fields when saving to GeoParquet.
-* **Style link is mandatory** and is added to every item referencing its assets.
+* **Style link are required** in order for eodash to visulize the assets correctly.
 
----
-
-If you want, I can also **update the script itself to enforce that `--style-url` is mandatory**, so it fails cleanly if someone tries to run it without a style. Do you want me to do that next?
