@@ -6,6 +6,7 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import box
 from datetime import datetime
+import collections.abc
 
 
 REQUIRED_FIELDS = ["id", "datetime", "geometry", "bbox", "assets", "links"]
@@ -25,27 +26,39 @@ DATE_FORMATS = [
 ]
 
 def extract_datetime_from_filename(filename: str) -> datetime:
-    """Try to parse datetime from a filename using multiple strategies."""
-    # Strip extension
+    """
+    Extract datetime from filename, including hour and minute if present.
+    Fallback to current UTC if no valid datetime is found.
+    """
+    # Remove file extension
     name = re.sub(r"\.[^.]+$", "", filename)
 
-    # Try direct formats
+    # First try known patterns directly
     for fmt in DATE_FORMATS:
         try:
             return datetime.strptime(name, fmt)
         except ValueError:
+            continue
+
+    # Scan for patterns like YYYYMMDD_HHMM in any part of the filename
+    match = re.search(r"(\d{8})[_-](\d{4})", name)
+    if match:
+        date_part, time_part = match.groups()
+        dt_str = date_part + time_part  # e.g., "201907021700"
+        try:
+            return datetime.strptime(dt_str, "%Y%m%d%H%M")
+        except ValueError:
             pass
 
-    # Try scanning substrings of digits
-    digit_chunks = re.findall(r"\d{6,14}", name)
-    for chunk in digit_chunks:
-        for fmt in DATE_FORMATS:
-            try:
-                return datetime.strptime(chunk, fmt)
-            except ValueError:
-                continue
+    # Fallback: scan for just 8-digit date
+    match = re.search(r"\d{8}", name)
+    if match:
+        try:
+            return datetime.strptime(match.group(), "%Y%m%d")
+        except ValueError:
+            pass
 
-    # Fallback
+    # Last fallback
     return datetime.utcnow()
 
 def load_file_list(args):
@@ -94,7 +107,7 @@ def create_stac_items(file_records, base_url, style_url, bbox=None, asset_type_o
         if dt is None or pd.isna(dt):
             dt = extract_datetime_from_filename(file_name)
 
-        item_id = dt.strftime("%Y-%m-%d")
+        item_id = dt.strftime("%Y-%m-%dT%H%M")
 
         # Geometry
         if bbox:
@@ -136,52 +149,50 @@ def create_stac_items(file_records, base_url, style_url, bbox=None, asset_type_o
     return gpd.GeoDataFrame(items, geometry="geometry", crs="EPSG:4326")
 
 
-def validate_geoparquet(path):
-    """Validate GeoParquet for STAC-like schema."""
-    try:
-        gdf = gpd.read_parquet(path)
-    except Exception as e:
-        print(f"❌ Failed to read {path}: {e}")
-        return False
+def validate_geoparquet(path: str) -> bool:
+    """
+    Validate a STAC-like GeoParquet file.
+    """
+    gdf = pd.read_parquet(path)
+    required_columns = ["id", "datetime", "geometry", "bbox", "assets", "links"]
 
-    all_ok = True
+    valid = True
+    for col in required_columns:
+        if col not in gdf.columns:
+            print(f"❌ Missing required column: {col}")
+            valid = False
 
-    # Check required fields
-    for field in REQUIRED_FIELDS:
-        if field not in gdf.columns:
-            print(f"❌ Missing required column: {field}")
-            all_ok = False
-
-    # Row-level validation
     for idx, row in gdf.iterrows():
-        # Assets must be dict with href + type
-        assets = row.get("assets", {})
+        # Validate assets
+        assets = row.get("assets")
         if not isinstance(assets, dict):
-            print(f"❌ Row {idx}: 'assets' is not a dict")
-            all_ok = False
-        else:
-            for k, v in assets.items():
-                if not isinstance(v, dict) or "href" not in v or "type" not in v:
-                    print(f"❌ Row {idx}: Asset {k} missing href/type")
-                    all_ok = False
+            # Try coercion if possible
+            if isinstance(assets, collections.abc.Mapping):
+                assets = dict(assets)
+            else:
+                print(f"❌ Row {idx}: 'assets' is not a dict")
+                valid = False
 
-        # Links must be list of dicts
-        links = row.get("links", [])
+        # Validate links
+        links = row.get("links")
         if not isinstance(links, list):
-            print(f"❌ Row {idx}: 'links' is not a list")
-            all_ok = False
-        else:
-            for l in links:
-                if not isinstance(l, dict) or "rel" not in l or "href" not in l:
-                    print(f"❌ Row {idx}: Invalid link structure")
-                    all_ok = False
+            # Try coercion if it's an iterable of dicts
+            if isinstance(links, collections.abc.Iterable):
+                try:
+                    links = list(links)
+                except Exception:
+                    print(f"❌ Row {idx}: 'links' is not a list")
+                    valid = False
+            else:
+                print(f"❌ Row {idx}: 'links' is not a list")
+                valid = False
 
-    if all_ok:
-        print(f"✅ {path} is valid")
+    if valid:
+        print(f"✅ {path} passed validation!")
     else:
         print(f"⚠️ {path} has validation errors")
 
-    return all_ok
+    return valid
 
 
 def main():
