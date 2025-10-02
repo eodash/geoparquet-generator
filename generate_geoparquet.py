@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import box
-from datetime import datetime
+from datetime import datetime, timezone
 import collections.abc
 
 
@@ -106,8 +106,14 @@ def create_stac_items(file_records, base_url, style_url, bbox=None, asset_type_o
 
         if dt is None or pd.isna(dt):
             dt = extract_datetime_from_filename(file_name)
+        
+        # Force to UTC (timezone aware)
+        if dt.tzinfo is None:
+            dt.replace(tzinfo=timezone.utc)
+        else:
+            dt.astimezone(timezone.utc)
 
-        item_id = dt.strftime("%Y-%m-%dT%H%M")
+        item_id = dt.strftime("%Y-%m-%dT%H%M%SZ")
 
         # Geometry
         if bbox:
